@@ -2,13 +2,13 @@ pipeline {
   agent any
   tools { 
         maven 'Maven_3_5_2'  
-    }
+       }
    stages{
    	stage('CompileandRunSonarAnalysis') {
             steps {	
 		sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=devsecops-webapp -Dsonar.organization=devsecops-webapp -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=778a9c289aa291c0f474b4722ae54b0d3dc04acc'
 			}
-    } 
+       } 
 	   
 	   
 	stage('RunSCAAnalysisUsingSnyk') {
@@ -16,9 +16,9 @@ pipeline {
 				withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
 					sh 'mvn snyk:test -fn'
 				}
-			}
-    }		
-	   
+ 			}
+        }		
+ 	   
 	stage('Build') { 
             steps { 
                withDockerRegistry([credentialsId: "dockerlogin", url: ""]) {
@@ -27,7 +27,7 @@ pipeline {
                  }
                }
             }
-    }
+        }
 
 	stage('Push') {
             steps {
@@ -37,7 +37,7 @@ pipeline {
                     }
                 }
             }
-	}
+        }
     	
 	stage('Kubernetes Deployment of ASG Buggy Web Application') {
 	   steps {
@@ -46,7 +46,21 @@ pipeline {
 		  sh('kubectl apply -f deployment.yaml --namespace=devsecops')
 		}
 	      }
-     }
-
+          }
+	   
+	stage ('wait_for_testing'){
+	   steps {
+		   sh 'pwd; sleep 180; echo "Application Has been deployed on K8S"'
+	   	}
+	   }
+	   
+	stage('RunDASTUsingZAP') {
+          steps {
+		    withKubeConfig([credentialsId: 'kubelogin']) {
+				sh('zap.sh -cmd -quickurl http://$(kubectl get services/asgbuggy --namespace=devsecops -o json| jq -r ".status.loadBalancer.ingress[] | .hostname") -quickprogress -quickout ${WORKSPACE}/zap_report.html')
+				archiveArtifacts artifacts: 'zap_report.html'
+		    }
+	     }
+       } 
   }
 }
